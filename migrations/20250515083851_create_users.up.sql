@@ -1,0 +1,8 @@
+CREATE TABLE users (
+    id BIGSERIAL NOT NULL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    encrypted_password VARCHAR(255) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'user')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
