@@ -18,7 +18,7 @@ type CentrifugeService struct {
 
 func NewCentrifugeService(ctx context.Context, logger *log.Log) *CentrifugeService {
 	c := gocent.New(gocent.Config{
-		Addr: "http://localhost:8000/connection/websocket",
+		Addr: "http://localhost:8000/api", // правильный адрес для gocent клиента
 		Key:  "my_api_key",
 	})
 
@@ -38,16 +38,14 @@ func (cs *CentrifugeService) Presence(channel string) (gocent.PresenceResult, er
 	return presence, nil
 }
 
-func (cs *CentrifugeService) createNotificationChannel(userID int) (string, error) {
-	channel := "notifications:user#" + strconv.Itoa(userID)
-	// sub, err := cs.Client.NewSubscription(channel, centrifuge.SubscriptionConfig{})
-	// if err != nil {
-	// 	cs.logger.Errorf(cs.ctx, "Failed to create subscription for channel %s: %v", channel, err)
-	// 	return "", err
-	// }
-	cs.logger.Infof(cs.ctx, "Notification channel created: %s", channel)
+func (cs *CentrifugeService) createNotificationChannel(userID ...int) ([]string, error) {
+	channels := make([]string, 100, 100)
+	for _, v := range userID {
+		channels = append(channels, "notifications:user#"+strconv.Itoa(v))
+	}
+	cs.logger.Infof(cs.ctx, "Notification channel created: %s", channels)
 
-	return channel, nil
+	return channels, nil
 }
 
 func (cs *CentrifugeService) PublishNotification(n *models.UserNotification) error {

@@ -1,11 +1,9 @@
 package notification
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/DANazavr/RATest/internal/common/meta"
@@ -14,7 +12,6 @@ import (
 	"github.com/DANazavr/RATest/internal/domain/models"
 	"github.com/DANazavr/RATest/internal/log"
 	"github.com/DANazavr/RATest/internal/services"
-	"github.com/centrifugal/gocent/v3"
 )
 
 type NotificationHandler struct {
@@ -37,66 +34,36 @@ func (nh *NotificationHandler) Presence() http.HandlerFunc {
 	type request struct {
 		Channel string `json:"channel"`
 	}
-	type response struct {
-		Presence map[string]gocent.ClientInfo `json:"presence"`
-	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
 		var req request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to decode request: %v", err)
 			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidRequestBody)
 			return
 		}
-		body, err := json.Marshal(map[string]string{
-			"channel": req.Channel,
-		})
+
+		if req.Channel == "" {
+			nh.logger.Errorf(nh.ctx, "Channel is empty")
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidRequestBody)
+			return
+		}
+
+		presence, err := nh.centrifugeService.Presence(req.Channel)
 		if err != nil {
-			nh.logger.Errorf(nh.ctx, "Failed to marshal request: %v", err)
+			nh.logger.Errorf(nh.ctx, "Failed to get presence: %v", err)
 			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
 			return
 		}
 
-		apiKey := os.Getenv("CENTRIFUGO_API_KEY")
-		if apiKey == "" {
-			nh.logger.Errorf(nh.ctx, "Centrifugo API key is not set")
-			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrInternalEnviroment)
-			return
+		w.Header().Set("Content-Type", "application/json")
+		for _, v := range presence.Presence {
+			nh.logger.Info(nh.ctx, "user: ", v.User)
+			if err := json.NewEncoder(w).Encode(v.User); err != nil {
+				nh.logger.Errorf(nh.ctx, "Failed to encode response: %v", err)
+				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
+				return
+			}
 		}
-
-		// Отправляем запрос в Centrifugo
-		httpReq, err := http.NewRequestWithContext(ctx, "POST", "http://localhost:8000/api/presence", bytes.NewBuffer(body))
-		if err != nil {
-			nh.logger.Errorf(nh.ctx, "Failed to create request: %v", err)
-			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
-			return
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "apikey "+apiKey)
-
-		client := &http.Client{}
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			nh.logger.Errorf(nh.ctx, "Failed to call Centrifugo: %v", err)
-			delivery.HendleError(w, r, http.StatusBadGateway, domain.ErrCentrifugePresenceFailed)
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			nh.logger.Errorf(nh.ctx, "Centrifugo returned status: %d", resp.StatusCode)
-			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrCentrifugePresenceFailed)
-			return
-		}
-
-		var centrifugoResp response
-		if err := json.NewDecoder(resp.Body).Decode(&centrifugoResp); err != nil {
-			nh.logger.Errorf(nh.ctx, "Failed to decode Centrifugo response: %v", err)
-			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
-			return
-		}
-
-		delivery.HendleRespond(w, r, http.StatusOK, centrifugoResp)
 	}
 }
 

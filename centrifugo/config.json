@@ -17,7 +17,7 @@
     "enabled": true
   },
   "log" : {
-    "level": "info"
+    "level": "debug"
   },
   "channel": {
     "without_namespace": {
@@ -29,6 +29,7 @@
     "namespaces": [
       {
         "name": "notifications",
+        "presence": true,
         "allow_user_limited_channels": true,
         "history_size": 10,
         "history_ttl": "300s"
