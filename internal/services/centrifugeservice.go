@@ -39,7 +39,7 @@ func (cs *CentrifugeService) Presence(channel string) (gocent.PresenceResult, er
 }
 
 func (cs *CentrifugeService) createNotificationChannel(userID ...int) ([]string, error) {
-	channels := make([]string, 100, 100)
+	channels := make([]string, 10, 100)
 	for _, v := range userID {
 		channels = append(channels, "notifications:user#"+strconv.Itoa(v))
 	}
