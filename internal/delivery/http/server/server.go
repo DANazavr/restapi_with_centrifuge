@@ -63,6 +63,7 @@ func (s *server) configureRouter() {
 	notificationRouter.Use(s.adminMiddleware.Admin)
 	// notificationRouter.HandleFunc("/broadcast", s.notificationHandler.SendBroadcastNotification()).Methods("POST")
 	notificationRouter.HandleFunc("/presence", s.notificationHandler.Presence()).Methods("POST")
+	notificationRouter.HandleFunc("/publish", s.notificationHandler.Publish()).Methods("POST")
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

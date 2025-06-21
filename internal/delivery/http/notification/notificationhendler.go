@@ -57,7 +57,6 @@ func (nh *NotificationHandler) Presence() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		for _, v := range presence.Presence {
-			nh.logger.Info(nh.ctx, "user: ", v.User)
 			if err := json.NewEncoder(w).Encode(v.User); err != nil {
 				nh.logger.Errorf(nh.ctx, "Failed to encode response: %v", err)
 				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
@@ -67,7 +66,7 @@ func (nh *NotificationHandler) Presence() http.HandlerFunc {
 	}
 }
 
-func (nh *NotificationHandler) Notify() http.HandlerFunc {
+func (nh *NotificationHandler) Publish() http.HandlerFunc {
 	type notification struct {
 		Title   string `json:"title"`
 		Message string `json:"message"`
@@ -120,13 +119,20 @@ func (nh *NotificationHandler) Notify() http.HandlerFunc {
 			Notification: notificationMap,
 		}
 
-		if err := nh.centrifugeService.PublishNotification(n); err != nil {
+		publish, err := nh.centrifugeService.Publish(n, req.Channel)
+		if err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to publish notification: %v", err)
 			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrCentrifugePublishFailed)
 			return
 		}
 
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(publish); err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to encode response: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePublishFailed)
+			return
+		}
+
 		nh.logger.Infof(ctx, "Notification sent to user %d: %v", user.ID, n.Notification)
-		w.WriteHeader(http.StatusOK)
 	}
 }
