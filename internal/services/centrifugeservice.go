@@ -61,3 +61,7 @@ func (cs *CentrifugeService) Publish(n *models.UserNotification, channel string)
 	}
 	return publish, nil
 }
+
+func (cs *CentrifugeService) SaveNotification(n models.UserNotification) error {
+	return nil
+}
