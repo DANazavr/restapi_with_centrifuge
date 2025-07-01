@@ -65,7 +65,7 @@ func main() {
 	store := sqlstore.New(ctx, db, logger)
 
 	userService := services.NewUserService(ctx, store, logger)
-	centrifugeService := services.NewCentrifugeService(ctx, logger)
+	centrifugeService := services.NewCentrifugeService(ctx, logger, store)
 	authService := services.NewAuthService(ctx, logger, centrifugeService)
 
 	go func() {

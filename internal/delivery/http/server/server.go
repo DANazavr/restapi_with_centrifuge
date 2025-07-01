@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/DANazavr/RATest/config"
+	"github.com/DANazavr/RATest/internal/delivery/http/admin"
 	"github.com/DANazavr/RATest/internal/delivery/http/auth"
 	"github.com/DANazavr/RATest/internal/delivery/http/notification"
 	"github.com/DANazavr/RATest/internal/delivery/http/user"
@@ -12,18 +13,20 @@ import (
 	"github.com/DANazavr/RATest/internal/services"
 	"github.com/DANazavr/RATest/internal/store"
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 )
 
 type server struct {
 	ctx                 context.Context
 	router              *mux.Router
 	logger              *log.Log
+	handler             http.Handler
 	config              *config.Config
 	authHendler         *auth.AuthHendler
 	userHendler         *user.UserHendler
 	notificationHandler *notification.NotificationHandler
 	authMiddleware      *auth.MiddlewareAuth
-	adminMiddleware     *auth.MiddlewareAdmin
+	adminMiddleware     *admin.MiddlewareAdmin
 }
 
 func NewServer(ctx context.Context, store store.Store, config *config.Config, logger *log.Log, us *services.UserService, as *services.AuthService) *server {
@@ -36,7 +39,7 @@ func NewServer(ctx context.Context, store store.Store, config *config.Config, lo
 		userHendler:         user.NewUserHendler(ctx, logger, store, us),
 		notificationHandler: notification.NewNotificationHandler(ctx, logger, us, as.CentrifugeService),
 		authMiddleware:      auth.NewMiddlewareAuth(ctx, logger, as),
-		adminMiddleware:     auth.NewMiddlewareAdmin(ctx, logger, as),
+		adminMiddleware:     admin.NewMiddlewareAdmin(ctx, logger, as),
 	}
 
 	s.configureRouter()
@@ -51,8 +54,10 @@ func (s *server) configureRouter() {
 	s.router.HandleFunc("/login", s.authHendler.HandleLogin()).Methods("POST")
 	s.router.HandleFunc("/token_refresh", s.authHendler.HandleTokensRefresh()).Methods("GET")
 
-	in := s.router.PathPrefix("/in").Subrouter()
+	in := s.router.PathPrefix("/user").Subrouter()
 	in.Use(s.authMiddleware.Auth)
+	in.HandleFunc("/getnotifications", s.notificationHandler.GetNotificationsByFilter()).Methods("GET")
+	in.HandleFunc("/markasread", s.notificationHandler.MarkAsRead()).Methods("POST")
 	in.HandleFunc("/profile", s.userHendler.HandleGetUser()).Methods("GET")
 
 	admin := s.router.PathPrefix("/admin").Subrouter()
@@ -61,11 +66,19 @@ func (s *server) configureRouter() {
 
 	notificationRouter := s.router.PathPrefix("/notification").Subrouter()
 	notificationRouter.Use(s.adminMiddleware.Admin)
-	// notificationRouter.HandleFunc("/broadcast", s.notificationHandler.SendBroadcastNotification()).Methods("POST")
-	notificationRouter.HandleFunc("/presence", s.notificationHandler.Presence()).Methods("POST")
+	notificationRouter.HandleFunc("/broadcast", s.notificationHandler.Broadcast()).Methods("POST")
 	notificationRouter.HandleFunc("/publish", s.notificationHandler.Publish()).Methods("POST")
+
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowCredentials: true,
+	})
+
+	s.handler = c.Handler(s.router)
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
+	s.handler.ServeHTTP(w, r)
 }

@@ -63,7 +63,7 @@ func (am *MiddlewareAuth) AuthMiddleware(next http.Handler) http.Handler {
 			}
 			ctxWithUser := context.WithValue(r.Context(), meta.UserIDKey, claims["sub"])
 			r = r.WithContext(ctxWithUser)
-			am.logger.Infof(ctxWithUser, "Authenticated user ID: %d", claims["sub"])
+			am.logger.Infof(ctxWithUser, "Authenticated user ID: %v", claims["sub"])
 		}
 		next.ServeHTTP(w, r)
 	})

@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS user_notifications (
+    uid BIGSERIAL NOT NULL PRIMARY KEY,
+    user_id BIGSERIAL NOT NULL REFERENCES users (id),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    send_at TIMESTAMP,
+    read_at TIMESTAMP,
+    notification JSONB NOT NULL
+);

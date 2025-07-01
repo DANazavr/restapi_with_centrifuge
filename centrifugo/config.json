@@ -3,7 +3,8 @@
     "token": {
       "hmac_secret_key": "tr0h51retherth015eEFSr0g"
     },
-    "allowed_origins": ["*"]
+    "allowed_origins": ["*"],
+    "stale_close_delay": "60s"
   },
   "http_api": {
     "key": "my_api_key"
@@ -29,6 +30,13 @@
     "namespaces": [
       {
         "name": "notifications",
+        "presence": true,
+        "allow_user_limited_channels": true,
+        "history_size": 10,
+        "history_ttl": "300s"
+      },
+      {
+        "name": "broadcasts",
         "presence": true,
         "allow_user_limited_channels": true,
         "history_size": 10,

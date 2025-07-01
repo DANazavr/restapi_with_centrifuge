@@ -10,9 +10,10 @@ type UserRepository interface {
 }
 
 type NotificationRepository interface {
-	Create(*models.UserNotification) error
+	Create(*models.UserNotification, []byte) error
 	GetById(int) (*models.UserNotification, error)
 	GetByUserId(int) ([]*models.UserNotification, error)
-	MarkAsSend(int) error
-	MarkAsRead(int) error
+	GetByUserIdWithFilter(int, string) ([]*models.UserNotification, error)
+	MarkAsSend(int, int) error
+	MarkAsRead(int, int) error
 }

@@ -30,42 +30,6 @@ func NewNotificationHandler(ctx context.Context, logger *log.Log, us *services.U
 	}
 }
 
-func (nh *NotificationHandler) Presence() http.HandlerFunc {
-	type request struct {
-		Channel string `json:"channel"`
-	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req request
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			nh.logger.Errorf(nh.ctx, "Failed to decode request: %v", err)
-			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidRequestBody)
-			return
-		}
-
-		if req.Channel == "" {
-			nh.logger.Errorf(nh.ctx, "Channel is empty")
-			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidRequestBody)
-			return
-		}
-
-		presence, err := nh.centrifugeService.Presence(req.Channel)
-		if err != nil {
-			nh.logger.Errorf(nh.ctx, "Failed to get presence: %v", err)
-			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		for _, v := range presence.Presence {
-			if err := json.NewEncoder(w).Encode(v.User); err != nil {
-				nh.logger.Errorf(nh.ctx, "Failed to encode response: %v", err)
-				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
-				return
-			}
-		}
-	}
-}
-
 func (nh *NotificationHandler) Publish() http.HandlerFunc {
 	type notification struct {
 		Title   string `json:"title"`
@@ -102,21 +66,39 @@ func (nh *NotificationHandler) Publish() http.HandlerFunc {
 			return
 		}
 
-		user, err := nh.userService.UsersGetById(userID)
-		if err != nil {
+		if _, err := nh.userService.UsersGetById(userID); err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to get user: %v", err)
 			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrUserNotFound)
 			return
 		}
-		ctx = context.WithValue(ctx, meta.UserIDKey, user.ID)
+		ctx = context.WithValue(ctx, meta.UserIDKey, userID)
 
 		notificationMap := map[string]interface{}{
 			"title":   req.Data.Title,
 			"message": req.Data.Message,
 		}
 		n := &models.UserNotification{
-			UserID:       user.ID,
+			UserID:       userID,
 			Notification: notificationMap,
+		}
+
+		if err := nh.centrifugeService.NotificationCreate(n); err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to create notification: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotificationCreateFailed)
+			return
+		}
+		nh.logger.Infof(nh.ctx, "Notification created for user %d: %v", userID, n.UID)
+
+		presence, err := nh.centrifugeService.Presence(req.Channel)
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to get presence: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
+			return
+		}
+		if len(presence.Presence) == 0 {
+			nh.logger.Infof(nh.ctx, "No users online in channel %s", req.Channel)
+			delivery.HendleError(w, r, http.StatusNotFound, domain.ErrCentrifugePresenceFailed)
+			return
 		}
 
 		publish, err := nh.centrifugeService.Publish(n, req.Channel)
@@ -126,6 +108,20 @@ func (nh *NotificationHandler) Publish() http.HandlerFunc {
 			return
 		}
 
+		for _, v := range presence.Presence {
+			userid, err := strconv.Atoi(v.User)
+			if err != nil {
+				nh.logger.Errorf(nh.ctx, "Failed to convert user ID from presence: %v", err)
+				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+				return
+			}
+			if err := nh.centrifugeService.MarkAsSend(n, userid); err != nil {
+				nh.logger.Errorf(nh.ctx, "Failed to mark notification as sent: %v", err)
+				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+				return
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(publish); err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to encode response: %v", err)
@@ -133,6 +129,200 @@ func (nh *NotificationHandler) Publish() http.HandlerFunc {
 			return
 		}
 
-		nh.logger.Infof(ctx, "Notification sent to user %d: %v", user.ID, n.Notification)
+		r = r.WithContext(ctx)
+		nh.logger.Infof(r.Context(), "Notification sent to user %d: %v", userID, n.Notification)
+	}
+}
+
+func (nh *NotificationHandler) Broadcast() http.HandlerFunc {
+	type notification struct {
+		Title   string `json:"title"`
+		Message string `json:"message"`
+	}
+	type request struct {
+		Data notification `json:"data"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to decode request: %v", err)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidRequestBody)
+			return
+		}
+
+		users, err := nh.userService.UsersGet()
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to get users: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrUserNotFound)
+			return
+		}
+		for _, user := range users {
+			if user.Role != "user" {
+				nh.logger.Infof(nh.ctx, "Skipping user %d with role %s", user.ID, user.Role)
+				continue
+			}
+			notificationMap := map[string]interface{}{
+				"title":   req.Data.Title,
+				"message": req.Data.Message,
+			}
+			n := &models.UserNotification{
+				UserID:       user.ID,
+				Notification: notificationMap,
+			}
+
+			channel := "notifications:user#" + strconv.Itoa(user.ID)
+
+			if err := nh.centrifugeService.NotificationCreate(n); err != nil {
+				nh.logger.Errorf(nh.ctx, "Failed to create notification: %v", err)
+				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotificationCreateFailed)
+				return
+			}
+			nh.logger.Infof(nh.ctx, "Notification created for user %d: %v", user.ID, n.UID)
+			_, err := nh.centrifugeService.Publish(n, channel)
+			if err != nil {
+				nh.logger.Errorf(nh.ctx, "Failed to publish notification: %v", err)
+				delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrCentrifugePublishFailed)
+				return
+			}
+			presence, err := nh.centrifugeService.Presence(channel)
+			if err != nil {
+				nh.logger.Errorf(nh.ctx, "Failed to get presence: %v", err)
+				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
+				return
+			}
+			if len(presence.Presence) == 0 {
+				nh.logger.Infof(nh.ctx, "No users online in channel %s", channel)
+				delivery.HendleError(w, r, http.StatusNotFound, domain.ErrCentrifugePresenceFailed)
+				return
+			}
+			for _, v := range presence.Presence {
+				userid, err := strconv.Atoi(v.User)
+				if err != nil {
+					nh.logger.Errorf(nh.ctx, "Failed to convert user ID from presence: %v", err)
+					delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+					return
+				}
+				if err := nh.centrifugeService.MarkAsSend(n, userid); err != nil {
+					nh.logger.Errorf(nh.ctx, "Failed to mark notification as sent: %v", err)
+					delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+					return
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		r = r.WithContext(ctx)
+		nh.logger.Infof(r.Context(), "Broadcast notification sent: %v", req.Data)
+	}
+}
+
+func (nh *NotificationHandler) MarkAsRead() http.HandlerFunc {
+	type request struct {
+		NotificationID int `json:"notification_id"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		userIDstr, ok := ctx.Value(meta.UserIDKey).(string)
+		if !ok || userIDstr == "" {
+			nh.logger.Errorf(nh.ctx, "Invalid user ID in context: %v", userIDstr)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidUserID)
+			return
+		}
+		userID, err := strconv.Atoi(userIDstr)
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to convert user ID to int: %v", err)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidUserID)
+			return
+		}
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to decode request: %v", err)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidRequestBody)
+			return
+		}
+		_, err = nh.userService.UsersGetById(userID)
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to get user: %v", err)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrUserNotFound)
+			return
+		}
+		notification, err := nh.centrifugeService.GetById(req.NotificationID)
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to get notifications: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+			return
+		}
+
+		if err := nh.centrifugeService.MarkAsRead(notification, userID); err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to mark notification as read: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(notification); err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to encode response: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+			return
+		}
+	}
+}
+
+func (nh *NotificationHandler) GetNotificationsByFilter() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		userIDstr, ok := ctx.Value(meta.UserIDKey).(string)
+		if !ok || userIDstr == "" {
+			nh.logger.Errorf(nh.ctx, "Invalid user ID in context: %v", userIDstr)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidUserID)
+			return
+		}
+		userID, err := strconv.Atoi(userIDstr)
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to convert user ID to int: %v", err)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidUserID)
+			return
+		}
+
+		_, err = nh.userService.UsersGetById(userID)
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to get user: %v", err)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrUserNotFound)
+			return
+		}
+
+		params := r.URL.Query()
+		filter := params.Get("filter")
+		if !nh.centrifugeService.ValidateFilter(filter) {
+			nh.logger.Errorf(nh.ctx, "Invalid filter: %s", filter)
+			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidFilter)
+			return
+		}
+
+		notifications, err := nh.centrifugeService.GetByUserIdWithFilter(userID, filter)
+		if err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to get notifications: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+			return
+		}
+
+		for _, v := range notifications {
+			if v.SendAt == nil {
+				if err := nh.centrifugeService.MarkAsSend(v, userID); err != nil {
+					nh.logger.Errorf(nh.ctx, "Failed to mark notification as sent: %v", err)
+					delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+					return
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(notifications); err != nil {
+			nh.logger.Errorf(nh.ctx, "Failed to encode response: %v", err)
+			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
+			return
+		}
 	}
 }

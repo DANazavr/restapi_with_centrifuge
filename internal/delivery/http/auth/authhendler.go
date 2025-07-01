@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
+	"strconv"
 
 	delivery "github.com/DANazavr/RATest/internal/delivery/http"
 	"github.com/DANazavr/RATest/internal/domain"
@@ -96,24 +96,23 @@ func (h *AuthHendler) HandleLogin() http.HandlerFunc {
 }
 
 func (h *AuthHendler) HandleTokensRefresh() http.HandlerFunc {
+	type request struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+
 	type response struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			delivery.HendleError(w, r, http.StatusUnauthorized, domain.ErrEmptyToken)
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			delivery.HendleError(w, r, http.StatusBadRequest, err)
 			return
 		}
 
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			delivery.HendleError(w, r, http.StatusUnauthorized, domain.ErrInvalidAuthHeader)
-			return
-		}
-		token, err := h.authService.ParseToken(tokenParts[1])
+		token, err := h.authService.ParseToken(req.RefreshToken)
 		if err != nil {
 			delivery.HendleError(w, r, http.StatusUnauthorized, domain.ErrInvalidToken)
 			return
@@ -125,13 +124,19 @@ func (h *AuthHendler) HandleTokensRefresh() http.HandlerFunc {
 				delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidToken)
 				return
 			}
-			userID, ok := claims["sub"].(float64)
+			userID, ok := claims["sub"].(string)
+			userid, err := strconv.ParseInt(userID, 10, 64)
+			if err != nil {
+				h.logger.Info(h.ctx, "failed to parse userID from token")
+				delivery.HendleError(w, r, http.StatusUnauthorized, domain.ErrInvalidToken)
+				return
+			}
 			if !ok {
 				delivery.HendleError(w, r, http.StatusUnauthorized, domain.ErrInvalidToken)
 				return
 			}
 
-			u, err := h.userService.UsersGetById(int(userID))
+			u, err := h.userService.UsersGetById(int(userid))
 			if err != nil {
 				delivery.HendleError(w, r, http.StatusNotFound, err)
 				return

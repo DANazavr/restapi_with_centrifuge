@@ -17,10 +17,13 @@ var (
 	ErrInternalEnviroment         = errors.New("enviroment key is not set")
 
 	// service errors
-	ErrUserAlreadyExists        = errors.New("user already exists")
-	ErrUserNotFound             = errors.New("user not found")
-	ErrNotificationNotFound     = errors.New("notification not found")
-	ErrCentrifugePublishFailed  = errors.New("failed to publish notification to Centrifuge")
-	ErrCentrifugePresenceFailed = errors.New("failed to get presence")
+	ErrUserAlreadyExists                  = errors.New("user already exists")
+	ErrUserNotFound                       = errors.New("user not found")
+	ErrNotificationNotFound               = errors.New("notification not found")
+	ErrInvalidFilter                      = errors.New("invalid filter")
+	ErrCentrifugePublishFailed            = errors.New("failed to publish notification to Centrifuge")
+	ErrCentrifugePresenceFailed           = errors.New("failed to get presence")
+	ErrCentrifugeNotification             = errors.New("error with notification")
+	ErrCentrifugeNotificationCreateFailed = errors.New("notification create failed")
 	// Err
 )
