@@ -12,16 +12,14 @@ import (
 )
 
 type AuthService struct {
-	ctx               context.Context
-	logger            *log.Log
-	CentrifugeService *CentrifugeService
+	ctx    context.Context
+	logger *log.Log
 }
 
-func NewAuthService(ctx context.Context, logger *log.Log, cS *CentrifugeService) *AuthService {
+func NewAuthService(ctx context.Context, logger *log.Log) *AuthService {
 	return &AuthService{
-		ctx:               ctx,
-		logger:            logger.WithComponent("authservice"),
-		CentrifugeService: cS,
+		ctx:    ctx,
+		logger: logger.WithComponent("authservice"),
 	}
 }
 
@@ -54,7 +52,6 @@ func (am *AuthService) GenerateTokens(userID int, role string) (string, string, 
 	if err != nil {
 		return "", "", err
 	}
-	// am.CentrifugeService.SetToken(accessToken)
 	refreshToken, err := am.GenerateRefreshToken(userID, role)
 	if err != nil {
 		return "", "", err

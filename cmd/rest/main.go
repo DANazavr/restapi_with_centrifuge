@@ -33,7 +33,7 @@ func main() {
 	logger := log.NewLog(ctx, &log.LogConfig{Component: "main"})
 	go func() {
 		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+		signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 		<-quit
 		cansel()
 	}()
@@ -48,6 +48,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			default:
+				// Keep the goroutine alive to handle signals
 			}
 		}
 	}()
@@ -65,11 +66,11 @@ func main() {
 	store := sqlstore.New(ctx, db, logger)
 
 	userService := services.NewUserService(ctx, store, logger)
-	centrifugeService := services.NewCentrifugeService(ctx, logger, store)
-	authService := services.NewAuthService(ctx, logger, centrifugeService)
+	notificationService := services.NewNotificationService(ctx, logger, store)
+	authService := services.NewAuthService(ctx, logger)
 
 	go func() {
-		if err := rest.Start(ctx, store, config, logger, userService, authService); err != nil {
+		if err := rest.Start(ctx, store, config, logger, userService, authService, notificationService); err != nil {
 			logger.Fatalf(ctx, "Failed to start server: %v", err)
 		}
 	}()

@@ -15,18 +15,18 @@ import (
 )
 
 type NotificationHandler struct {
-	ctx               context.Context
-	logger            *log.Log
-	userService       *services.UserService
-	centrifugeService *services.CentrifugeService
+	ctx                 context.Context
+	logger              *log.Log
+	userService         *services.UserService
+	notificationService *services.NotificationService
 }
 
-func NewNotificationHandler(ctx context.Context, logger *log.Log, us *services.UserService, cs *services.CentrifugeService) *NotificationHandler {
+func NewNotificationHandler(ctx context.Context, logger *log.Log, us *services.UserService, cs *services.NotificationService) *NotificationHandler {
 	return &NotificationHandler{
-		ctx:               ctx,
-		logger:            logger.WithComponent("notification/notificationHandler"),
-		userService:       us,
-		centrifugeService: cs,
+		ctx:                 ctx,
+		logger:              logger.WithComponent("rest/notification/notificationHandler"),
+		userService:         us,
+		notificationService: cs,
 	}
 }
 
@@ -82,14 +82,14 @@ func (nh *NotificationHandler) Publish() http.HandlerFunc {
 			Notification: notificationMap,
 		}
 
-		if err := nh.centrifugeService.NotificationCreate(n); err != nil {
+		if err := nh.notificationService.NotificationCreate(n); err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to create notification: %v", err)
 			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotificationCreateFailed)
 			return
 		}
 		nh.logger.Infof(nh.ctx, "Notification created for user %d: %v", userID, n.UID)
 
-		presence, err := nh.centrifugeService.Presence(req.Channel)
+		presence, err := nh.notificationService.Presence(req.Channel)
 		if err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to get presence: %v", err)
 			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
@@ -101,7 +101,7 @@ func (nh *NotificationHandler) Publish() http.HandlerFunc {
 			return
 		}
 
-		publish, err := nh.centrifugeService.Publish(n, req.Channel)
+		publish, err := nh.notificationService.Publish(n, req.Channel)
 		if err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to publish notification: %v", err)
 			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrCentrifugePublishFailed)
@@ -115,7 +115,7 @@ func (nh *NotificationHandler) Publish() http.HandlerFunc {
 				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
 				return
 			}
-			if err := nh.centrifugeService.MarkAsSend(n, userid); err != nil {
+			if err := nh.notificationService.MarkAsSend(n, userid); err != nil {
 				nh.logger.Errorf(nh.ctx, "Failed to mark notification as sent: %v", err)
 				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
 				return
@@ -173,19 +173,19 @@ func (nh *NotificationHandler) Broadcast() http.HandlerFunc {
 
 			channel := "notifications:user#" + strconv.Itoa(user.ID)
 
-			if err := nh.centrifugeService.NotificationCreate(n); err != nil {
+			if err := nh.notificationService.NotificationCreate(n); err != nil {
 				nh.logger.Errorf(nh.ctx, "Failed to create notification: %v", err)
 				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotificationCreateFailed)
 				return
 			}
 			nh.logger.Infof(nh.ctx, "Notification created for user %d: %v", user.ID, n.UID)
-			_, err := nh.centrifugeService.Publish(n, channel)
+			_, err := nh.notificationService.Publish(n, channel)
 			if err != nil {
 				nh.logger.Errorf(nh.ctx, "Failed to publish notification: %v", err)
 				delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrCentrifugePublishFailed)
 				return
 			}
-			presence, err := nh.centrifugeService.Presence(channel)
+			presence, err := nh.notificationService.Presence(channel)
 			if err != nil {
 				nh.logger.Errorf(nh.ctx, "Failed to get presence: %v", err)
 				delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugePresenceFailed)
@@ -203,7 +203,7 @@ func (nh *NotificationHandler) Broadcast() http.HandlerFunc {
 					delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
 					return
 				}
-				if err := nh.centrifugeService.MarkAsSend(n, userid); err != nil {
+				if err := nh.notificationService.MarkAsSend(n, userid); err != nil {
 					nh.logger.Errorf(nh.ctx, "Failed to mark notification as sent: %v", err)
 					delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
 					return
@@ -248,14 +248,14 @@ func (nh *NotificationHandler) MarkAsRead() http.HandlerFunc {
 			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrUserNotFound)
 			return
 		}
-		notification, err := nh.centrifugeService.GetById(req.NotificationID)
+		notification, err := nh.notificationService.GetById(req.NotificationID)
 		if err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to get notifications: %v", err)
 			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
 			return
 		}
 
-		if err := nh.centrifugeService.MarkAsRead(notification, userID); err != nil {
+		if err := nh.notificationService.MarkAsRead(notification, userID); err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to mark notification as read: %v", err)
 			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
 			return
@@ -295,13 +295,13 @@ func (nh *NotificationHandler) GetNotificationsByFilter() http.HandlerFunc {
 
 		params := r.URL.Query()
 		filter := params.Get("filter")
-		if !nh.centrifugeService.ValidateFilter(filter) {
+		if !nh.notificationService.ValidateFilter(filter) {
 			nh.logger.Errorf(nh.ctx, "Invalid filter: %s", filter)
 			delivery.HendleError(w, r, http.StatusBadRequest, domain.ErrInvalidFilter)
 			return
 		}
 
-		notifications, err := nh.centrifugeService.GetByUserIdWithFilter(userID, filter)
+		notifications, err := nh.notificationService.GetByUserIdWithFilter(userID, filter)
 		if err != nil {
 			nh.logger.Errorf(nh.ctx, "Failed to get notifications: %v", err)
 			delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
@@ -310,7 +310,7 @@ func (nh *NotificationHandler) GetNotificationsByFilter() http.HandlerFunc {
 
 		for _, v := range notifications {
 			if v.SendAt == nil {
-				if err := nh.centrifugeService.MarkAsSend(v, userID); err != nil {
+				if err := nh.notificationService.MarkAsSend(v, userID); err != nil {
 					nh.logger.Errorf(nh.ctx, "Failed to mark notification as sent: %v", err)
 					delivery.HendleError(w, r, http.StatusInternalServerError, domain.ErrCentrifugeNotification)
 					return

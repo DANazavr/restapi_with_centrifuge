@@ -11,7 +11,6 @@ import (
 	"github.com/DANazavr/RATest/internal/domain/models"
 	"github.com/DANazavr/RATest/internal/log"
 	"github.com/DANazavr/RATest/internal/services"
-	"github.com/DANazavr/RATest/internal/store"
 	"github.com/golang-jwt/jwt/v4"
 )
 
@@ -22,7 +21,7 @@ type AuthHendler struct {
 	authService *services.AuthService
 }
 
-func NewAuthHendler(ctx context.Context, logger *log.Log, store store.Store, us *services.UserService, as *services.AuthService) *AuthHendler {
+func NewAuthHendler(ctx context.Context, logger *log.Log, us *services.UserService, as *services.AuthService) *AuthHendler {
 	return &AuthHendler{
 		ctx:         ctx,
 		logger:      logger.WithComponent("auth/authHendler"),

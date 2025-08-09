@@ -7,18 +7,19 @@ import (
 )
 
 type Config struct {
-	Addr        string `json:"addr"`
+	RestAddr    string `json:"rest_addr"`
+	GRPCAddr    string `json:"grpc_addr"`
 	LogLevel    string `json:"log_level"`
 	DatabaseURL string `json:"database_url"`
 }
 
-func NewConfig() *Config {
-	return &Config{
-		Addr:        ":8080",
-		LogLevel:    "debug",
-		DatabaseURL: "postgres://user:password@localhost:5432/dbname?sslmode=disable",
-	}
-}
+// func NewConfig() *Config {
+// 	return &Config{
+// 		Addr:        ":8080",
+// 		LogLevel:    "debug",
+// 		DatabaseURL: "postgres://user:password@localhost:5432/dbname?sslmode=disable",
+// 	}
+// }
 
 func ParseConfig(filepath string) *Config {
 	var c Config

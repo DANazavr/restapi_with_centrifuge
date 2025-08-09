@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package notification;
+
+option go_package = "github.com/DANazavr/RATest/protos/gen/go/ratest/notification;notification";
+
+service Notification {
+    rpc Publish(PublishRequest) returns (PublishResponse);
+    rpc Broadcast(BroadcastRequest) returns (BroadcastResponse);
+    rpc MarkAsRead(MarkAsReadRequest) returns (MarkAsReadResponse);
+    rpc GetNotificationsByFilter(GetNotificationsByFilterRequest) returns (GetNotificationsByFilterResponse);
+}
+
+message data {
+    string title = 1;
+    string message = 2;
+}
+
+message PublishRequest {
+    string channel = 1;
+    data data = 2;
+}
+
+message PublishResponse {
+    uint64 offset = 1;
+    string epoch = 2;
+}
+
+message BroadcastRequest {
+    data data = 1;
+}
+
+message BroadcastResponse {
+    string message = 1;
+}
+
+message MarkAsReadRequest {
+    string notification_id = 1;
+}
+
+message MarkAsReadResponse {
+    string message = 1;
+}
+
+message GetNotificationsByFilterRequest {
+    string filter = 1; // JSON string with filter criteria
+}
+
+message notification {
+    int64 uid = 1;
+    int64 userid = 2;
+    string created_at = 3;
+    string send_at = 4;
+    string read_at = 5;
+    data data = 6;
+}
+
+message GetNotificationsByFilterResponse {
+    repeated notification notifications = 1;
+}

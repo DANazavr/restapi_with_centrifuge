@@ -11,7 +11,7 @@ import (
 	"github.com/DANazavr/RATest/internal/store"
 )
 
-func Start(ctx context.Context, store store.Store, config *config.Config, logger *log.Log, us *services.UserService, as *services.AuthService) error {
-	srv := server.NewServer(ctx, store, config, logger, us, as)
-	return http.ListenAndServe(config.Addr, srv)
+func Start(ctx context.Context, store store.Store, config *config.Config, logger *log.Log, us *services.UserService, as *services.AuthService, ns *services.NotificationService) error {
+	srv := server.NewServer(ctx, store, config, logger, us, as, ns)
+	return http.ListenAndServe(config.RestAddr, srv)
 }

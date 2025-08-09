@@ -29,22 +29,22 @@ type server struct {
 	adminMiddleware     *admin.MiddlewareAdmin
 }
 
-func NewServer(ctx context.Context, store store.Store, config *config.Config, logger *log.Log, us *services.UserService, as *services.AuthService) *server {
+func NewServer(ctx context.Context, store store.Store, config *config.Config, logger *log.Log, us *services.UserService, as *services.AuthService, ns *services.NotificationService) *server {
 	s := &server{
 		ctx:                 ctx,
 		router:              mux.NewRouter(),
 		logger:              logger.WithComponent("http/server"),
 		config:              config,
-		authHendler:         auth.NewAuthHendler(ctx, logger, store, us, as),
+		authHendler:         auth.NewAuthHendler(ctx, logger, us, as),
 		userHendler:         user.NewUserHendler(ctx, logger, store, us),
-		notificationHandler: notification.NewNotificationHandler(ctx, logger, us, as.CentrifugeService),
+		notificationHandler: notification.NewNotificationHandler(ctx, logger, us, ns),
 		authMiddleware:      auth.NewMiddlewareAuth(ctx, logger, as),
 		adminMiddleware:     admin.NewMiddlewareAdmin(ctx, logger, as),
 	}
 
 	s.configureRouter()
 
-	s.logger.Infof(context.TODO(), "Server is running on port: %s", s.config.Addr)
+	s.logger.Infof(context.TODO(), "Server is running on port: %s", s.config.RestAddr)
 
 	return s
 }
