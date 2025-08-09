@@ -6,8 +6,6 @@
 
 Высокопроизводительная система уведомлений в реальном времени с использованием Go и Centrifugo. Система обеспечивает мгновенную доставку сообщений пользователям с подтверждением прочтения и историей уведомлений.
 
-![System Architecture](docs/architecture.png)
-
 ## Ключевые особенности
 
 - ⚡ Мгновенная доставка сообщений (<100 мс задержки)
@@ -25,10 +23,10 @@
 | --------------------- | ------------------------- |
 | Язык программирования | Go 1.21+                  |
 | gRPC сервисы          | gRPC-Go, Protocol Buffers |
-| HTTP Gateway          | Gin Web Framework         |
+| HTTP Gateway          | Gorilla mux               |
 | База данных           | PostgreSQL 14+            |
 | Брокер сообщений      | Centrifugo v3             |
-| Аутентификация        | JWT, OAuth2               |
+| Аутентификация        | JWT                       |
 | Контейнеризация       | Docker, Docker Compose    |
 
 ### Фронтенд
@@ -41,15 +39,17 @@ Vanilla JavaScript, Centrifuge.js, HTML5, CSS3
 
 ### Аутентификация
 
-Метод Эндпоинт Описание
-POST /login Вход в систему
-POST /register Регистрация пользователя
-GET /token_refresh Обновление токена
+| Метод | Эндпоинт       | Описание                 |
+| ----- | -------------- | ------------------------ |
+| POST  | /login         | Вход в систему           |
+| POST  | /register      | Регистрация пользователя |
+| GET   | /token_refresh | Обновление токена        |
 
 ### Уведомления
 
-Метод Эндпоинт Описание
-GET /user/getnotifications Получить уведомления
-POST /user/markasread Отметить как прочитанное
-POST /notification/publish Создать уведомление
-POST /notification/broadcast Опубликовать через Centrifugo
+| Метод | Эндпоинт                | Описание                      |
+| ----- | ----------------------- | ----------------------------- |
+| GET   | /user/getnotifications  | Получить уведомления          |
+| POST  | /user/markasread        | Отметить как прочитанное      |
+| POST  | /notification/publish   | Создать уведомление           |
+| POST  | /notification/broadcast | Опубликовать через Centrifugo |
